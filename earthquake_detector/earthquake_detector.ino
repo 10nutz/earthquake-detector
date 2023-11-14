@@ -25,8 +25,8 @@ bool emergencyActive = false;
 void reset(){
   lcd.clear();
   lcd.print("OK!");
-  digitalWrite(LED_EMERGENCY, LOW);
-  digitalWrite(LED_ON, HIGH);
+  PORTC |= (1 << 3);
+  PORTC &= ~(1 << 4);
   noTone(BUZZER);
   emergencyActive = false;
 }
@@ -61,14 +61,22 @@ void calibrate(){
 void setup() {
   Serial.begin(9600);
   lcd.begin(16, 2);
-  pinMode(LED_ON, OUTPUT);
-  pinMode(LED_EMERGENCY, OUTPUT);
-  pinMode(BUZZER, OUTPUT);
-  pinMode(BUTTON_CALIBRATION, INPUT);
-  pinMode(BUTTON_RESET, INPUT);
-  
-  digitalWrite(LED_ON, HIGH);
+  PORTC = 0x00; //initializare port
+  DDRC = 0x18; // setam ca iesiri porturile 3 si 4 pt led
 
+  TCCR1A = 0x00; // timer pentru buzzer
+  TCCR1B = 0x00;
+  TCCR1A = 0x40;
+  TCCR1B = 0x09;
+  OCR1A = 8000;
+
+  PORTD = 0x00; //Buzzer + lcd
+  DDRD = 0x7C;
+
+  PORTB = 0x00; //LCD + butoane
+  DDRB = 0x3C;
+  
+  PORTC = (1 << 3);
 
   delay(1000);
   lcd.print("EarthQuake ");
@@ -87,16 +95,16 @@ void loop() {
   int y_new = analogRead(Y_AXIS);
   int z_new = analogRead(Z_AXIS);
 
-  if (abs(x_new - x_ref) > threshold || abs(y_new - y_ref) > threshold || abs(z_new - z_ref) > threshold) {
+  if ((abs(x_new - x_ref) > threshold || abs(y_new - y_ref) > threshold || abs(z_new - z_ref) > threshold) && emergencyActive == false) {
     lcd.clear();
     lcd.print("EMERGENCY!");
-    digitalWrite(LED_ON, LOW);
-    digitalWrite(LED_EMERGENCY, HIGH);
+    PORTC &= ~(1 << 3);
+    PORTC |= (1 << 4);
     emergencyActive = true;
     tone(BUZZER, 1000);
   }
 
-  if (digitalRead(BUTTON_RESET) == HIGH && emergencyActive) {
+  if (digitalRead(BUTTON_RESET) == HIGH && emergencyActive == true) {
     reset();
   }
 
