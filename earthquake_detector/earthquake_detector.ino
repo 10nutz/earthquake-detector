@@ -21,24 +21,25 @@ double x_ref;
 double y_ref;
 double z_ref;
 bool emergencyActive = false;
+volatile bool buzzerState = false;
 
-void reset(){
+void reset() {
   lcd.clear();
   lcd.print("OK!");
   PORTC |= (1 << 3);
   PORTC &= ~(1 << 4);
-  noTone(BUZZER);
+  buzzerState = false;
   emergencyActive = false;
 }
 
-void calibrate(){
+void calibrate() {
   lcd.clear();
   lcd.print("Calibrating.....");
   delay(1000);
   lcd.clear();
   lcd.print("Please wait...");
   delay(1000);
-    
+
   x_ref = 0;
   y_ref = 0;
   z_ref = 0;
@@ -46,7 +47,7 @@ void calibrate(){
     x_ref += analogRead(X_AXIS);
     y_ref += analogRead(Y_AXIS);
     z_ref += analogRead(Z_AXIS);
-    }
+  }
   x_ref /= samples;
   y_ref /= samples;
   z_ref /= samples;
@@ -61,21 +62,23 @@ void calibrate(){
 void setup() {
   Serial.begin(9600);
   lcd.begin(16, 2);
-  PORTC = 0x00; //initializare port
-  DDRC = 0x18; // setam ca iesiri porturile 3 si 4 pt led
+  PORTC = 0x00; // initializare port
+  DDRC |= 0x18; // setam ca iesiri porturile 3 si 4 pt led
 
   TCCR1A = 0x00; // timer pentru buzzer
   TCCR1B = 0x00;
   TCCR1A = 0x40;
-  TCCR1B = 0x09;
+  TCCR1B = 0x0A;  // Set WGM12 and CS11 bits for CTC mode and prescaler of 8
   OCR1A = 8000;
 
-  PORTD = 0x00; //Buzzer + lcd
-  DDRD = 0x7C;
+  TIMSK1 |= (1 << 1);  // Enable Timer 1 Output Compare A Match interrupt
 
-  PORTB = 0x00; //LCD + butoane
-  DDRB = 0x3C;
-  
+  PORTD = 0x00; // Buzzer + lcd
+  DDRD |= 0x3C;
+
+  PORTB = 0x00; // LCD + butoane
+  DDRB |= 0x7C;
+
   PORTC = (1 << 3);
 
   delay(1000);
@@ -89,8 +92,15 @@ void setup() {
   lcd.print("OK!");
 }
 
-void loop() {
+ISR(TIMER1_COMPA_vect) {
+  if (buzzerState) {
+    PORTD ^= (1 << 2); // Toggle the buzzer pin state
+  } else {
+    PORTD &= ~(1 << 2); // Turn off the buzzer
+  }
+}
 
+void loop() {
   int x_new = analogRead(X_AXIS);
   int y_new = analogRead(Y_AXIS);
   int z_new = analogRead(Z_AXIS);
@@ -101,7 +111,7 @@ void loop() {
     PORTC &= ~(1 << 3);
     PORTC |= (1 << 4);
     emergencyActive = true;
-    tone(BUZZER, 1000);
+    buzzerState = true;
   }
 
   if (digitalRead(BUTTON_RESET) == HIGH && emergencyActive == true) {
