@@ -5,17 +5,9 @@ LiquidCrystal lcd(13, 12, 11, 6, 5, 4, 3);
 #define X_AXIS A0
 #define Y_AXIS A1
 #define Z_AXIS A2
-
-#define LED_ON A3
-#define LED_EMERGENCY A4
-
-#define BUZZER 2
-
-#define BUTTON_CALIBRATION 8
-#define BUTTON_RESET 9
-
+#define BC 8
 #define samples 50
-#define threshold 50
+#define threshold 10  // momentan e mic ca sa facem debug mai usor
 
 double x_ref;
 double y_ref;
@@ -44,9 +36,9 @@ void calibrate() {
   y_ref = 0;
   z_ref = 0;
   for (int i = 0; i < samples; i++) {
-    x_ref += analogRead(X_AXIS);
-    y_ref += analogRead(Y_AXIS);
-    z_ref += analogRead(Z_AXIS);
+    x_ref += analogReadCustom(X_AXIS);
+    y_ref += analogReadCustom(Y_AXIS);
+    z_ref += analogReadCustom(Z_AXIS);
   }
   x_ref /= samples;
   y_ref /= samples;
@@ -61,6 +53,7 @@ void calibrate() {
 
 void setup() {
   Serial.begin(9600);
+  Serial.println("test2");
   lcd.begin(16, 2);
   PORTC = 0x00; // initializare port
   DDRC |= 0x18; // setam ca iesiri porturile 3 si 4 pt led
@@ -76,10 +69,15 @@ void setup() {
   PORTD = 0x00; // Buzzer + lcd
   DDRD |= 0x3C;
 
-  PORTB = 0x00; // LCD + butoane
+  PORTB = 0x00; // LCD
   DDRB |= 0x7C;
 
   PORTC = (1 << 3);
+
+  ADMUX = 0x00; //initialize the register
+  ADMUX |= (1<<REFS0); // (1<<6) the Vcc (5V theoretically is used as Vref)
+  ADCSRA |= 0b00000111; // set prescaler to 128
+  ADCSRA |= (1<<ADEN); //enable ADC operation
 
   delay(1000);
   lcd.print("EarthQuake ");
@@ -100,10 +98,26 @@ ISR(TIMER1_COMPA_vect) {
   }
 }
 
+int analogReadCustom(int pin) {
+  // Set the ADC channel
+  ADMUX = (ADMUX & 0xF0) | (pin & 0x0F);
+
+  // Start ADC conversion
+  ADCSRA |= (1 << ADSC);
+
+  // Wait for conversion to complete
+  while (ADCSRA & (1 << ADSC));
+
+  // Return the ADC result
+  return ADC;
+}
+
 void loop() {
-  int x_new = analogRead(X_AXIS);
-  int y_new = analogRead(Y_AXIS);
-  int z_new = analogRead(Z_AXIS);
+int channel = 0;
+  int x_new = analogReadCustom(X_AXIS);
+  int y_new = analogReadCustom(Y_AXIS);
+  int z_new = analogReadCustom(Z_AXIS);
+
 
   if ((abs(x_new - x_ref) > threshold || abs(y_new - y_ref) > threshold || abs(z_new - z_ref) > threshold) && emergencyActive == false) {
     lcd.clear();
@@ -114,11 +128,13 @@ void loop() {
     buzzerState = true;
   }
 
-  if (digitalRead(BUTTON_RESET) == HIGH && emergencyActive == true) {
+  int buttonStateReset = (PINC & (1 << 5)) ? HIGH : LOW;
+  if (buttonStateReset == HIGH && emergencyActive == true) {
     reset();
   }
 
-  if (digitalRead(BUTTON_CALIBRATION) == HIGH) {
+  int buttonStateCalibration = (PINB & (1 << 0)) ? HIGH : LOW;
+  if (buttonStateCalibration == HIGH) {
     reset();
     calibrate();
   }
